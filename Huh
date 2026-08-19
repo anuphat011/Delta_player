@@ -1,0 +1,665 @@
+-- ==============================================================================
+-- Deobfuscated Script: MarvenRiz Hub (Map : Rock Fruit)
+-- ==============================================================================
+
+task.wait()
+repeat task.wait() until game:IsLoaded()
+repeat task.wait() until game:GetService("Players").LocalPlayer and game:GetService("Players").LocalPlayer.Character
+
+-- Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
+local Workspace = game:GetService("Workspace")
+
+-- Workspace Objects
+local NpcQuest = Workspace:WaitForChild("NpcQuest")
+local VFX = Workspace:WaitForChild("VFX")
+local Itemdrops = Workspace:WaitForChild("Itemdrops")
+
+-- Game Modules
+local Modules = ReplicatedStorage:WaitForChild("Modules")
+local UseItems = require(Modules:WaitForChild("UseItems"))
+local QuestModule = require(Modules:WaitForChild("QuestModule"))
+local Itemlist = require(Modules:WaitForChild("Itemlist"))
+local SpawnBossList = require(Modules:WaitForChild("SpawnBossList"))
+local BlacklistItemTrade = require(Modules:WaitForChild("BlacklistItemTrade"))
+local AccessoryModule = require(Modules:WaitForChild("AccessoryModule"))
+local GaranteeRandomItem = require(Modules:WaitForChild("GaranteeRandomItem"))
+local GaranteeEventMoon = require(Modules:WaitForChild("GaranteeEventMoon"))
+local Economy = require(Modules:WaitForChild("Economy"))
+local NetworkEvent = Modules:WaitForChild("NetworkFramework"):WaitForChild("NetworkEvent")
+local ActionRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Action")
+local SystemRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("System")
+local InventoryRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Inventory")
+
+-- Static Data
+local RandomChestsList = {"Mambo", "MiniUpdate2", "OmniMan", "UPDATE1", "SorryForDelay1", "Lucy", "Luck"}
+local WeaponTypeList = {"Melee", "Sword", "Special", "DevilFruit"}
+local MethodFarmList = {"Behind", "Below", "Upper", "Front"}
+local MultiRollList = {"x5", "x10", "x15"}
+local BossNameMapping = {
+    Thief = "Bacon Thief",
+    Piccolo = "Piccolo",
+    Duck = "Duck Monster"
+}
+
+-- Economy Items List
+local EconomyItemList = {}
+for itemName, _ in pairs(Economy) do
+    table.insert(EconomyItemList, itemName)
+end
+table.sort(EconomyItemList)
+
+-- Guarantee Diamond Points List
+local GuaranteeDiamondList = {}
+local GuaranteeDiamondFormatted = {}
+for itemName, data in pairs(GaranteeRandomItem) do
+    table.insert(GuaranteeDiamondList, { Name = itemName, Price = data })
+end
+table.sort(GuaranteeDiamondList, function(a, b)
+    return a.Price < b.Price
+end)
+for _, item in ipairs(GuaranteeDiamondList) do
+    table.insert(GuaranteeDiamondFormatted, item.Name .. " / " .. tostring(item.Price) .. " Point")
+end
+
+-- Guarantee Moon Points List
+local GuaranteeMoonList = {}
+local GuaranteeMoonFormatted = {}
+for itemName, data in pairs(GaranteeEventMoon) do
+    table.insert(GuaranteeMoonList, { Name = itemName, Price = data })
+end
+table.sort(GuaranteeMoonList, function(a, b)
+    return a.Price < b.Price
+end)
+for _, item in ipairs(GuaranteeMoonList) do
+    table.insert(GuaranteeMoonFormatted, item.Name .. " / " .. tostring(item.Price) .. " Point")
+end
+
+-- Quest Data Processing
+table.sort(QuestModule, function(a, b)
+    return a.Level < b.Level
+end)
+
+local ProcessedQuests = {}
+for _, qData in ipairs(QuestModule) do
+    local questObj = NpcQuest:WaitForChild("NPC_Quest" .. tostring(qData.QuestId or ""))
+    local monsterName = questObj:GetAttribute("Name")
+    table.insert(ProcessedQuests, {
+        Level = qData.Level,
+        Monster = monsterName,
+        Quest = questObj
+    })
+end
+
+-- Potion List
+local PotionList = {}
+for itemName, _ in pairs(UseItems) do
+    table.insert(PotionList, itemName)
+end
+table.sort(PotionList)
+
+-- X2 Potion List
+local X2PotionList = {}
+for itemName, _ in pairs(BlacklistItemTrade) do
+    if string.find(tostring(itemName), "X2") then
+        table.insert(X2PotionList, itemName)
+    end
+end
+table.sort(X2PotionList)
+
+-- Material Drop List & Mobs Map
+local MaterialDropList = {}
+local ItemDropMobs = {}
+for _, dropFolder in ipairs(Itemdrops:GetChildren()) do
+    local scrollFrame = dropFolder:FindFirstChild("ScrollingFrame", true)
+    if scrollFrame then
+        ItemDropMobs[dropFolder.Name] = {}
+        for _, desc in ipairs(scrollFrame:GetDescendants()) do
+            if desc:IsA("TextLabel") and not string.find(desc.Text, "%%") then
+                ItemDropMobs[dropFolder.Name][desc.Text] = true
+                if not MaterialDropList[desc.Text] then
+                    MaterialDropList[desc.Text] = {}
+                end
+                table.insert(MaterialDropList[desc.Text], dropFolder.Name)
+            end
+        end
+    end
+end
+
+-- Accessory List
+local AccessoryList = {}
+for accName, accData in pairs(Itemlist) do
+    if type(accData) == "table" and accData.Type == "Accessory" then
+        table.insert(AccessoryList, accName)
+    end
+end
+table.sort(AccessoryList)
+
+-- Boss List
+local BossList = {}
+for bossName, _ in pairs(SpawnBossList) do
+    table.insert(BossList, bossName)
+end
+table.sort(BossList)
+
+-- Global State Variables
+_G.MainWeapon = "Melee"
+_G.Select_EquipWeapon = {}
+_G.AutoSkillZ = false
+_G.AutoSkillX = false
+_G.AutoSkillC = false
+_G.AutoSkillV = false
+_G.AutoSkillF = false
+_G.Auto_Haki = false
+_G.Select_Method = "Upper"
+_G.Distance_Farm = 5
+_G.Auto_Equip_Accessory = false
+_G.Auto_Rebirth = false
+_G.Select_Potion = {}
+_G.Auto_Use_Potion = false
+_G.Auto_Farm_Level = false
+_G.Select_Material = {}
+_G.Auto_Farm_Material = false
+_G.Select_Boss = BossList[1] or ""
+_G.Auto_FarmBoss = false
+_G.Auto_FarmBoss_Automatically = false
+_G.Auto_BaconThief = false
+_G.Auto_Piccolo = false
+_G.Auto_Duck = false
+_G.Auto_DuckAutomatically = false
+_G.Select_Item = ""
+_G.Auto_CraftWeapon = false
+_G.Auto_Farm_Set = false
+_G.Auto_Raid = false
+_G.Dungeon_UseValue = 1
+_G.HealthPercent = 30
+_G.Auto_Dungeon = false
+_G.Select_SellItem = {}
+_G.Auto_SellItem = false
+_G.Amount = 1000
+_G.AutoMelee = false
+_G.AutoDefense = false
+_G.AutoSword = false
+_G.AutoPower = false
+_G.Select_Random = RandomChestsList[1] or ""
+_G.Auto_RandomChest = false
+_G.Select_Random_Moon = RandomChestsList[1] or ""
+_G.Auto_RandomChest_Moon = false
+_G.Select_Guarantee = GuaranteeDiamondFormatted[1] and GuaranteeDiamondFormatted[1]:match("^(.-) /") or ""
+_G.Auto_Guarantee = false
+_G.Select_Guarantee_Moon = GuaranteeMoonFormatted[1] and GuaranteeMoonFormatted[1]:match("^(.-) /") or ""
+_G.Auto_Guarantee_Moon = false
+
+-- Anti-Idle
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new(0, 0))
+end)
+
+-- Helper Functions
+local function Teleport(cframe)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        char:PivotTo(cframe)
+    end
+end
+
+local function EquipWeapon()
+    local char = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not char or not backpack then return end
+    
+    -- Unequip non-matching tools in character
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") then
+            local toolType = tool:GetAttribute("Type")
+            if toolType ~= _G.MainWeapon and not (_G.Select_EquipWeapon and table.find(_G.Select_EquipWeapon, toolType)) then
+                tool.Parent = backpack
+            end
+        end
+    end
+    
+    -- Equip main weapon
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool:GetAttribute("Type") == _G.MainWeapon then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then hum:EquipTool(tool) end
+            break
+        end
+    end
+    
+    -- Equip support weapons
+    if _G.Select_EquipWeapon and type(_G.Select_EquipWeapon) == "table" then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and table.find(_G.Select_EquipWeapon, tool:GetAttribute("Type")) then
+                tool.Parent = char
+            end
+        end
+    end
+end
+
+local function UseSkills()
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    local skills = {}
+    if _G.AutoSkillZ then table.insert(skills, "z") end
+    if _G.AutoSkillX then table.insert(skills, "x") end
+    if _G.AutoSkillC then table.insert(skills, "c") end
+    if _G.AutoSkillV then table.insert(skills, "v") end
+    if _G.AutoSkillF then table.insert(skills, "f") end
+    
+    if #skills == 0 then return end
+    
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") then
+            local randomSkill = skills[math.random(1, #skills)]
+            ActionRemote:FireServer(tool.Name, randomSkill)
+        end
+    end
+end
+
+local function AttackHit()
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") then
+            ActionRemote:FireServer(tool.Name, "hit")
+        end
+    end
+end
+
+local function GetQuestFrame()
+    local hud = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("HUD")
+    if hud and hud:FindFirstChild("Main") and hud.Main:FindFirstChild("Frame_Quest") then
+        return hud.Main.Frame_Quest
+    end
+    return nil
+end
+
+local function GetBestQuest(playerLevel)
+    local best = ProcessedQuests[1]
+    for _, q in ipairs(ProcessedQuests) do
+        if playerLevel >= q.Level then
+            best = q
+        else
+            break
+        end
+    end
+    return best
+end
+
+local lastInvTick = 0
+local cachedInventory = {}
+local function GetInventory()
+    if tick() - lastInvTick < 0.2 then
+        return cachedInventory
+    end
+    lastInvTick = tick()
+    
+    local invAttr = LocalPlayer:GetAttribute("Inventory")
+    if invAttr then
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(invAttr)
+        end)
+        if success and type(result) == "table" then
+            cachedInventory = result
+            return cachedInventory
+        end
+    end
+    cachedInventory = {}
+    return cachedInventory
+end
+
+local function GetItemAmount(itemName)
+    local inv = GetInventory()
+    if inv and inv[itemName] and inv[itemName].amount then
+        return tonumber(inv[itemName].amount) or 0
+    end
+    return 0
+end
+
+local vfxConn = nil
+local function ToggleVFX(disable)
+    if disable then
+        VFX:ClearAllChildren()
+        if not vfxConn then
+            vfxConn = VFX.DescendantAdded:Connect(function(desc)
+                pcall(function() desc:Destroy() end)
+            end)
+        end
+    else
+        if vfxConn then
+            vfxConn:Disconnect()
+            vfxConn = nil
+        end
+    end
+end
+
+-- Load Fluent / MarvenRiz GUI Library
+local LibCode = game:HttpGet("https://raw.githubusercontent.com/znesr99/gui/refs/heads/main/MarvenRizLib.lua")
+local Fluent = loadstring(LibCode)()
+
+local Window = Fluent:CreateWindow({
+    Title = "MarvenRiz Hub",
+    Subtitle = "Map : Rock Fruit",
+    Size = UDim2.fromOffset(500, 370),
+    AccentColor = Color3.fromRGB(50, 150, 255),
+    SideBarWidth = 120,
+    Logo = "rbxassetid://87526284179554",
+    LogoSize = 32,
+    SphereText = false,
+    SphereImage = "rbxassetid://87526284179554",
+    SphereIconSize = 38,
+    Map = "RockFruit"
+})
+
+-- ==============================================================================
+-- TABS & PAGES SETUP
+-- ==============================================================================
+
+-- 1. Settings Tab
+local Tab_Settings = Window:CreateTab("Settings", true, false)
+local Page_MainSettings = Tab_Settings:CreatePage("Main Settings")
+
+local Sec_Weapon = Page_MainSettings:CreateSection("๐—ก๏ธ Select Weapon", "Left")
+Sec_Weapon:Dropdown({
+    Title = "Main Weapon (Attack)",
+    Options = WeaponTypeList,
+    Multi = false,
+    Value = "Melee",
+    Callback = function(val)
+        _G.MainWeapon = val
+    end
+})
+Sec_Weapon:Dropdown({
+    Title = "Select Support Weapon",
+    Options = WeaponTypeList,
+    Multi = true,
+    Callback = function(val)
+        _G.Select_EquipWeapon = val
+    end
+})
+
+local Sec_Skills = Page_MainSettings:CreateSection("โ”๏ธ Auto Skills", "Left")
+Sec_Skills:Toggle({
+    Title = "Auto Skill Z",
+    Value = false,
+    Callback = function(val) _G.AutoSkillZ = val end
+})
+Sec_Skills:Toggle({
+    Title = "Auto Skill X",
+    Value = false,
+    Callback = function(val) _G.AutoSkillX = val end
+})
+Sec_Skills:Toggle({
+    Title = "Auto Skill C",
+    Value = false,
+    Callback = function(val) _G.AutoSkillC = val end
+})
+Sec_Skills:Toggle({
+    Title = "Auto Skill V",
+    Value = false,
+    Callback = function(val) _G.AutoSkillV = val end
+})
+Sec_Skills:Toggle({
+    Title = "Auto Skill F",
+    Value = false,
+    Callback = function(val) _G.AutoSkillF = val end
+})
+
+local Sec_Method = Page_MainSettings:CreateSection("๐ฏ Select Method Farm", "Right")
+Sec_Method:Dropdown({
+    Title = "Select Method Farm",
+    Options = MethodFarmList,
+    Multi = false,
+    Value = "Upper",
+    Callback = function(val) _G.Select_Method = val end
+})
+Sec_Method:Slider({
+    Title = "Distance Farm",
+    Min = 0,
+    Max = 30,
+    Value = 5,
+    Callback = function(val) _G.Distance_Farm = val end
+})
+
+local Sec_Haki = Page_MainSettings:CreateSection("๐‘๏ธ Haki", "Right")
+Sec_Haki:Toggle({
+    Title = "Auto Enabled Haki",
+    Value = false,
+    Callback = function(val) _G.Auto_Haki = val end
+})
+
+local Sec_VFX = Page_MainSettings:CreateSection("โจ VFX", "Right")
+Sec_VFX:Toggle({
+    Title = "Disable VFX",
+    Value = false,
+    Callback = function(val) ToggleVFX(val) end
+})
+
+local Page_OtherSettings = Tab_Settings:CreatePage("Other Settings")
+local Sec_AccRebirth = Page_OtherSettings:CreateSection("๐’ Accessory & Rebirth", "Right")
+Sec_AccRebirth:Toggle({
+    Title = "Auto Equip The Best Accessory",
+    Value = false,
+    Callback = function(val) _G.Auto_Equip_Accessory = val end
+})
+Sec_AccRebirth:Toggle({
+    Title = "Auto Rebirth (Max Level)",
+    Value = false,
+    Callback = function(val) _G.Auto_Rebirth = val end
+})
+
+local Sec_Potion = Page_OtherSettings:CreateSection("๐งช Auto Use X2 Potion", "Left")
+Sec_Potion:Dropdown({
+    Title = "Select X2 Potion",
+    Options = X2PotionList,
+    Multi = true,
+    Callback = function(val) _G.Select_Potion = val end
+})
+Sec_Potion:Toggle({
+    Title = "Auto Use X2 Potion",
+    Value = false,
+    Callback = function(val) _G.Auto_Use_Potion = val end
+})
+
+-- 2. Main Tab
+local Tab_Main = Window:CreateTab("Main", false, false)
+
+-- Farm Page
+local Page_Farm = Tab_Main:CreatePage("Farm")
+local Sec_AutoFarm = Page_Farm:CreateSection("๐พ Auto Farm", "Left")
+Sec_AutoFarm:Toggle({
+    Title = "Auto Level Farm",
+    Value = false,
+    Callback = function(val)
+        _G.Auto_Farm_Level = val
+        if not val then
+            NetworkEvent:FireServer("fire", nil, "Quest", "Cancel")
+        end
+    end
+})
+
+local Sec_Material = Page_Farm:CreateSection("โ๏ธ Auto Farm Material", "Right")
+local MaterialKeys = {}
+for matName, _ in pairs(MaterialDropList) do table.insert(MaterialKeys, matName) end
+table.sort(MaterialKeys)
+
+Sec_Material:Dropdown({
+    Title = "Select Farm Material",
+    Options = MaterialKeys,
+    Multi = true,
+    Callback = function(val) _G.Select_Material = val end
+})
+Sec_Material:Toggle({
+    Title = "Auto Farm Material",
+    Value = false,
+    Callback = function(val) _G.Auto_Farm_Material = val end
+})
+
+-- Boss Page
+local Page_Boss = Tab_Main:CreatePage("Boss")
+local Sec_BossLeft = Page_Boss:CreateSection("๐‘น Boss", "Left")
+Sec_BossLeft:Dropdown({
+    Title = "Select Boss",
+    Options = BossList,
+    Multi = false,
+    Callback = function(val) _G.Select_Boss = val end
+})
+Sec_BossLeft:Toggle({
+    Title = "Auto Farm All Boss",
+    Value = false,
+    Callback = function(val) _G.Auto_FarmBoss = val end
+})
+Sec_BossLeft:Toggle({
+    Title = "Auto Farm Boss (Full)",
+    Value = false,
+    Callback = function(val)
+        _G.Auto_FarmBoss_Automatically = val
+        if not val then
+            NetworkEvent:FireServer("fire", nil, "Quest", "Cancel")
+        end
+    end
+})
+
+local Sec_Thief = Page_Boss:CreateSection("๐’ธ Thief", "Left")
+Sec_Thief:Toggle({
+    Title = "Auto Farm Thief Chest",
+    Value = false,
+    Callback = function(val) _G.Auto_BaconThief = val end
+})
+
+local Sec_Piccolo = Page_Boss:CreateSection("๐ Piccolo", "Left")
+Sec_Piccolo:Toggle({
+    Title = "Auto Farm Piccolo",
+    Value = false,
+    Callback = function(val) _G.Auto_Piccolo = val end
+})
+
+local Sec_Duck = Page_Boss:CreateSection("๐ฆ Duck", "Right")
+Sec_Duck:Toggle({
+    Title = "Auto Farm Duck",
+    Value = false,
+    Callback = function(val) _G.Auto_Duck = val end
+})
+Sec_Duck:Toggle({
+    Title = "Auto Farm Duck (Full)",
+    Value = false,
+    Callback = function(val)
+        _G.Auto_DuckAutomatically = val
+        if not val then
+            NetworkEvent:FireServer("fire", nil, "Quest", "Cancel")
+        end
+    end
+})
+
+local Sec_SpawnCheck = Page_Boss:CreateSection("๐” Spawned Check", "Right")
+local SpawnStatusParagraph = Sec_SpawnCheck:Paragraph({
+    Title = "Spawn Status",
+    Content = "Loading..."
+})
+
+-- Dungeon & Weapon Page
+local Page_DungeonWeapon = Tab_Main:CreatePage("Dungeon / Weapon")
+local Sec_WeaponCraft = Page_DungeonWeapon:CreateSection("๐”จ Weapon", "Right")
+local WeaponCraftRequirementPara = Sec_WeaponCraft:Paragraph({
+    Title = "Item Requirements ( None )",
+    Content = "N/A"
+})
+
+local CraftableWeapons = {}
+for weaponName, _ in pairs(UseItems) do
+    table.insert(CraftableWeapons, weaponName)
+end
+table.sort(CraftableWeapons)
+
+Sec_WeaponCraft:Dropdown({
+    Title = "Select Weapon Craft",
+    Options = CraftableWeapons,
+    Multi = false,
+    Callback = function(val)
+        _G.Select_Item = val
+    end
+})
+
+Sec_WeaponCraft:Button({
+    Title = "Craft Weapon",
+    Callback = function()
+        if _G.Select_Item and UseItems[_G.Select_Item] then
+            NetworkEvent:FireServer("fire", nil, "Craft", _G.Select_Item, UseItems[_G.Select_Item].Type)
+        end
+    end
+})
+
+Sec_WeaponCraft:Toggle({
+    Title = "Auto Craft Weapon (Full)",
+    Value = false,
+    Callback = function(val) _G.Auto_CraftWeapon = val end
+})
+Sec_WeaponCraft:Toggle({
+    Title = "Auto Farm Set Weapon",
+    Value = false,
+    Callback = function(val) _G.Auto_Farm_Set = val end
+})
+
+local Sec_Raid = Page_DungeonWeapon:CreateSection("๐ Raid", "Left")
+Sec_Raid:Toggle({
+    Title = "Auto Raid Moon (Full)",
+    Value = false,
+    Callback = function(val)
+        _G.Auto_Raid = val
+        if not val then
+            NetworkEvent:FireServer("fire", nil, "Quest", "Cancel")
+        end
+    end
+})
+
+local Sec_Dungeon = Page_DungeonWeapon:CreateSection("๐ฐ Dungeon", "Left")
+Sec_Dungeon:Textbox({
+    Title = "Dungeon Orb to Use",
+    Placeholder = "...",
+    Callback = function(val)
+        if tonumber(val) then
+            _G.Dungeon_UseValue = tonumber(val)
+        end
+    end
+})
+Sec_Dungeon:Slider({
+    Title = "Health Return %",
+    Min = 1,
+    Max = 100,
+    Value = 30,
+    Callback = function(val) _G.HealthPercent = val end
+})
+Sec_Dungeon:Toggle({
+    Title = "Auto Dungeon (Full)",
+    Value = false,
+    Callback = function(val)
+        _G.Auto_Dungeon = val
+        if not val then
+            NetworkEvent:FireServer("fire", nil, "Quest", "Cancel")
+        end
+    end
+})
+
+-- 3. Other Tab
+local Tab_Other = Window:CreateTab("Other", false, false)
+
+-- Sell Item / Status Page
+local Page_SellStatus = Tab_Other:CreatePage("Sell Item / Status")
+local Sec_AutoSell = Page_SellStatus:CreateSection("๐’ฐ Auto Sell", "Left")
+Sec_AutoSell:Dropdown({
+    Title = "Select Sell Item",
+    Options = EconomyItemList,
+    Multi = true,
+    Callback = function(val) _G.Select_SellItem = val end
+})
+Sec_AutoSell:Toggle({
+    Title = "Auto Sell",
+    Val
